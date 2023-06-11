@@ -1,0 +1,262 @@
+---
+title: "Statistical analyses accompanying the paper entitled: "
+subtitle: "An implementation in R Markdown"
+author: "Jonathan S. Reeves"
+date: "`r Sys.Date()`"
+output: tint::tintPdf
+bibliography: skeleton.bib
+link-citations: yes
+---
+
+# Load Packages and read in data
+```{r setup, include=FALSE}
+library(car)
+library(MASS)
+library(performance)
+
+alp_df <- "Data/ALP_RSI_Data.RDS"
+anvils <- read_sf("Data/ALP_Anvils.GPKG")
+```
+
+# Analysis of hardness
+
+## Check Distribution of hardness values 
+
+```{r hardness distribution, fig.width= 4, fig.height= 4}
+
+ggplot(anvils, aes(x = Mean.value)) + 
+  geom_histogram()+
+  labs(x = "Rebound Hardness")+
+  theme_bw()
+
+```
+
+The distribution does not look normal. Check with Shapiro-wilk test.
+
+```{r hardness shap test}
+
+shapiro.test(anvils$Mean.value)
+
+```
+
+Shapiro wilks test says that values are not normally distributed. Use a mann-whitney U test, instead of a T-test.
+
+```{r hardness mann whitness U}
+
+wilcox.test(Mean.value ~ RM_Quality, data = anvils)
+```
+# Generalized Linear Models
+
+## The effect of proximity to palm tree/palm_tree density (mean_d2_palm) and hardness of available materials on artifact density.
+
+### Structure of the data
+
+**Two numeric predictors:**
+
+Interpolated Hardness Values (hardness): These values are the estimate hardness values for stone available at each 1m by 1m collection square. These values generated through kriging interpolation of rebound hardness values collected from anvils across the study site. 
+
+Average distance from palm trees (mean_d2_palm): These values approximate the abundance of nut-trees at the location of each collection square. Low values imply that a square more closely associated with multiple palm trees. 
+
+**The response is Count data** 
+
+Number of Artifacts at a site (n): this acts as a proxy for how much material has accumulated at a given location.
+
+### Check the distribution of the response
+
+```{r}
+
+source("/Users/jonathanreeves/Dropbox/Jonathan_Reeves/Studies/Hominid_Paleobiology/Coursework/Spring_2018/Linear_Models/Functions/diagnostic_fcns.r")
+
+write.csv(alp_df[,c("n","mean_d2_palm", "hardness","per_high","n_concoid", "n_battered","n_hammer","n_frags")], "../Data_and_Code/ALP_Squares_in_context_.csv")
+
+```
+
+It is not the most poisson looking distribution. It is potentially over dispersed.
+
+### Fit the Model (Poisson)
+
+```{r}
+
+full_model <- glm(n~mean_d2_palm + hardness, data = alp_df, family = "poisson")
+
+```
+
+### Check for Overdispersion
+
+```{r}
+performance::check_overdispersion(full_model)
+```
+
+The poisson model is over dispersed. A negative binomial model might accommodate this.
+
+### Fit the Model (negative binomial)
+
+```{r}
+
+full_model <- glm.nb(n~mean_d2_palm + hardness, data = alp_df)
+
+```
+
+**Check for over-dispersion.**
+
+
+```{r}
+performance::check_overdispersion(full_model)
+```
+The negative binomial distribution deals with the over dispersion. 
+Value is not much greater than 1.
+
+**Check for collinearity.** 
+
+```{r}
+library(car)
+
+xx <- lm(n~mean_d2_palm + hardness, data = alp_df)
+
+vif(xx)
+
+```
+
+**Model Stability: influence and leverage**
+
+
+```{r}
+
+max(as.vector(influence(full_model)$hat))
+
+lev.thresh(full_model)
+
+```
+
+The maximum influence is below the acceptable threshold. So there are no overly influential cases. 
+
+**Check DFBeta**
+
+```{r}
+
+cbind(coefficients(full_model), coefficients(full_model)+
+ t(apply(X=dfbeta(full_model), MARGIN=2, FUN=range)))
+
+```
+
+The coefficients are stable so that looks pretty good. Hardness varies the most but the variability is still acceptable.    
+
+**Full-Null model comparison**
+
+```{r}
+
+null <- glm.nb(formula = n~1, data = alp_df)
+
+fn_res <- anova(null, full_model, test = "Chisq")
+
+fn_res
+```
+
+Analysis of deviance reveals the model is significant.
+
+**Summary of Model**
+
+```{r}
+summary(full_model)
+```
+
+**Significance of individual variables**
+
+```{r}
+drop1(full_model, test = "Chisq")
+```
+Distance to palm trees is significant but hardness is not. 
+
+
+## Environmental influences on raw material diversity.
+
+### Structure of the data
+
+**Two numeric predictors:**
+
+Same as above.
+
+**The response is Count data** 
+
+Proportion of high quality limestone (per_high): Calculated as the relative frequency of the high quality grey limestone in each 1m x 1m square.  
+
+
+### Check the distribution of the covariates
+
+```{r}
+hist(as.numeric(alp_df$mean_d2_palm))
+```
+
+```{r}
+hist(as.numeric(alp_df$hardness))
+```
+Distribution of hardness values are bimodal. 
+
+
+### Fit the Model (Binomial)
+
+
+```{r}
+full_model <- glm(per_high~mean_d2_palm + hardness, data = alp_df, family = binomial(link = "logit"))
+summary(full_model)
+```
+
+**Collinearity**
+
+```{r}
+xx <- lm(per_high~mean_d2_palm + hardness, data = alp_df)
+vif(xx)
+```
+
+**Model Stability**
+
+```{r}
+max(influence(full_model)$hat)
+
+lev.thresh(full_model)
+```
+The most influential case is not greater than the threshold. 
+
+**DFBeta**
+
+```{r}
+
+cbind(coefficients(full_model), coefficients(full_model)+
+        t(apply(X=dfbeta(full_model), MARGIN=2, FUN=range)))
+
+```
+### Compare with null model
+```{r}
+null <- glm(formula = per_high~1, family = "binomial", data = alp_df)
+anova(null, full_model, test = "Chisq")
+
+```
+The model is significant. 
+
+
+### Model Summary
+
+```{r}
+summary(full_model)
+```
+
+
+### Significance of the individual variables 
+
+```{r}
+drop1(full_model, test = "Chisq")
+```
+# Correlation tests for assemblage attributes
+
+
+```{r}
+cor.test(alp_df$n_concoid, alp_df$hardness, method = "kendall")
+cor.test(alp_df$n_battered, alp_df$hardness,  method = "kendall")
+cor.test(alp_df$n_hammer, alp_df$hardness,  method = "kendall")
+cor.test(alp_df$n_frags, alp_df$hardness,  method = "kendall")
+
+cor.test(alp_df$n_concoid, alp_df$mean_d2_palm,  method = "kendall")
+cor.test(alp_df$n_battered, alp_df$mean_d2_palm,  method = "kendall")
+cor.test(alp_df$n_hammer, alp_df$mean_d2_palm,  method = "kendall")
+cor.test(alp_df$n_frags, alp_df$mean_d2_palm,  method = "kendall")
+```

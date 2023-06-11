@@ -1,0 +1,49 @@
+---
+title: "Reeves_et_al_RSI_Figures"
+author: "Jonathan S. Reeves"
+date: "2023-06-08"
+output:
+  pdf_document: default
+---
+
+# Load Packages
+
+```{r load packages, include=FALSE}
+
+library(dplyr)
+library(sf)
+library(rgdal)
+library(raster)
+library(rgeos)
+library(gstat)
+library(ggplot2)
+library(ggspatial)
+library(ggnewscale)
+library(egg)
+library(ggsn)
+
+```
+
+
+# Figure 4
+
+## Read in Data
+
+```{r fig.4 data}
+anvils <- read_sf("Data/ALP_Anvils.GPKG")
+```
+
+```{r fig 4 inset}
+
+cols <- c("#A69C94", 
+          "#8C2C08")
+
+a <- ggplot(anvils, aes(x = RM_Quality, y = Mean.value , fill = RM_Quality)) + 
+  geom_boxplot(show.legend = FALSE) + 
+  scale_fill_manual(values = cols)+
+  labs(x = "Raw Material Quality",
+       y = "Rebound Hardness (RH)")+
+  theme(panel.background = element_blank(),
+        panel.border = element_rect(fill = NA,
+                                    color = "black"))
+```
