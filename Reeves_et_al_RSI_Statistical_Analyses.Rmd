@@ -14,7 +14,7 @@ library(car)
 library(MASS)
 library(performance)
 
-alp_df <- "Data/ALP_RSI_Data.RDS"
+alp_df <- readRDS("Data/ALP_RSI_Data.RDS")
 anvils <- read_sf("Data/ALP_Anvils.GPKG")
 ```
 
